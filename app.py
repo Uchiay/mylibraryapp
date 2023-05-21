@@ -12,11 +12,12 @@ app = Flask(__name__)
 app.secret_key = 'abcd2123445'  
 app.config['MYSQL_HOST'] = 'localhost'
 app.config['MYSQL_USER'] = 'root'
-app.config['MYSQL_PASSWORD'] = 'lancaster123'
+app.config['MYSQL_PASSWORD'] = 'sasuke123'
+# app.config['MYSQL_PASSWORD'] = 'lancaster123'
 app.config['MYSQL_DB'] = 'db'
 
 app.config['MYSQL_DATABASE_USER'] = 'root'
-app.config['MYSQL_DATABASE_PASSWORD'] = 'lancaster123'
+app.config['MYSQL_DATABASE_PASSWORD'] = 'sasuke123'
 app.config['MYSQL_DATABASE_DB'] = 'db'
 app.config['MYSQL_DATABASE_HOST'] = 'localhost'
 mysql = MySQL(app)
@@ -58,6 +59,7 @@ def make_dict(columns, list_o_tuples):
 @app.route('/login', methods =['GET', 'POST'])
 def login():
     mesage = ''
+    session['temploggedin'] = True
     print('here-123')
     if request.method == 'POST' and 'email' in request.form and 'password' in request.form:
         email = request.form['email']
@@ -71,7 +73,8 @@ def login():
         header = get_header(cursor)
         user = make_dict1(header, user)
         print('user: ', user)
-        if user:
+        print('session from login page:', session)
+        if user['id']:
             session['loggedin'] = True
             session['userid'] = user['id']
             session['name'] = user['first_name']
@@ -80,13 +83,37 @@ def login():
             mesage = 'Logged in successfully !'            
             return redirect(url_for('dashboard'))
         else:
+            session.pop('loggedin', None)
             mesage = 'Please enter correct email / password !'
     return render_template('login.html', mesage = mesage)
     
 @app.route("/dashboard", methods =['GET', 'POST'])
 def dashboard():
-    if 'loggedin' in session:        
-        return render_template("dashboard.html")
+    if 'temploggedin' in session:   
+        conn = mysql.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('select count(1) as cnt from db.issued_book where status =% s', ('Issued', ))
+        issued_books = cursor.fetchall()   
+        header = get_header(cursor)
+        issued_books = make_dict(header, issued_books) 
+        print('issued_books:', issued_books[0])
+
+        cursor.execute('select count(1) as cnt from db.issued_book where status =% s', ('Returned', ))
+        returned_books = cursor.fetchall()   
+        header = get_header(cursor)
+        returned_books = make_dict(header, returned_books) 
+        print('returned_books:', returned_books[0])
+
+        cursor.execute('select  sum(no_of_copy) as cnt from db.book')
+        tot_books = cursor.fetchall()   
+        header = get_header(cursor)
+        tot_books = make_dict(header, tot_books) 
+        print('tot_books:', tot_books[0])
+
+        available_books = tot_books[0]['cnt'] - issued_books[0]['cnt']
+
+        return render_template("dashboard.html", returned_books = returned_books[0], issued_books= issued_books[0], tot_books = tot_books[0], available_books = available_books)
     return redirect(url_for('login'))    
     
 @app.route("/users", methods =['GET', 'POST'])
@@ -354,6 +381,7 @@ def save_book():
     
 @app.route("/delete_book", methods =['GET'])
 def delete_book():
+    print('session: ', session)
     if 'loggedin' in session:
         deleteBookId = request.args.get('bookid')
         conn = mysql.connect()
